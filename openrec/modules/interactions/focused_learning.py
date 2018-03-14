@@ -74,9 +74,9 @@ class FocusedLearning(Interaction):
     def _build_training_graph(self):
 
         with tf.variable_scope(self._scope, reuse=self._reuse):
-            # TODO
             dot_user_item = tf.reduce_sum(tf.multiply(self._user, self._item),
                                           axis=1, keep_dims=False, name="dot_user_item")
+            predictions = dot_user_item + self._item_bias
             # norm of user
             user_norm = tf.nn.l2_loss(self._user)
 
@@ -88,7 +88,7 @@ class FocusedLearning(Interaction):
 
         with tf.variable_scope(self._scope, reuse=self._reuse):
             prediction = tf.reduce_sum(tf.multiply(self._user, self._item),
-                                          axis=1, keep_dims=False, name="dot_user_item")
-            
+                                          axis=1, keep_dims=False, name="dot_user_item") + tf.reshape(self._item_bias, [-1])
+
             self._outputs.append(prediction)
 
