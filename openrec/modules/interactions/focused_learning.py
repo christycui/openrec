@@ -21,6 +21,8 @@ class FocusedLearning(Interaction):
         item representations]**.
     item_weights: Tensorflow tensor, required for training
         Weights for items involved in the interactions.
+    item_bias: Tensorflow tensor
+        Biases for items involved in the interactions. Shape: **[number of interactions, 1]**.
     labels: Tensorflow tensor, required for training.
         Groundtruth labels for the interactions. Shape **[number of interactions, ]**.
     f_item: Tensorflow tensor, required for training
@@ -47,16 +49,16 @@ class FocusedLearning(Interaction):
     .. Beyond Globally Optimal: Focused Learning for Improved Recommendations
     """
 
-    def __init__(self, user, item=None, item_weights=None, f_item=None, 
+    def __init__(self, user, item=None, item_weights=None, item_bias=None, f_item=None, 
                 u_item=None, l2_reg_user, l2_reg_focus, l2_reg_unfocus, train=None, scope=None, reuse=False):
 
         assert train is not None, 'train cannot be None'
         assert user is not None, 'user cannot be None'
+        assert item_weights is not None, 'item weights cannot be None'
+        assert item_bias is not None, 'item bias cannot be None'
         self._user = user
 
         if train:
-            assert f_item is not None, 'p_item cannot be None'
-            assert u_item is not None, 'n_item cannot be None'
             assert f_item is not None, 'f_item cannot be None'
             assert u_item is not None, 'u_item cannot be None'
             assert item_weights is not None, 'item_weights cannot be None'
@@ -76,7 +78,7 @@ class FocusedLearning(Interaction):
         with tf.variable_scope(self._scope, reuse=self._reuse):
             dot_user_item = tf.reduce_sum(tf.multiply(self._user, self._item),
                                           axis=1, keep_dims=False, name="dot_user_item")
-            predictions = dot_user_item + self._item_bias
+            predictions = dot_user_item + tf.reshape(self._item_bias, [-1])
             # norm of user
             user_norm = tf.nn.l2_loss(self._user)
 
