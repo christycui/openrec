@@ -1,7 +1,7 @@
 import tensorflow as tf
 from openrec.modules.interactions import Interaction
 
-class FocusedLearning(Interaction):
+class PointwiseMSERegularized(Interaction):
 
     """
     
@@ -19,18 +19,15 @@ class FocusedLearning(Interaction):
     item: Tensorflow tensor, required for testing
         Representations for items involved in the interactions. Shape: **[number of interactions, dimensionality of \
         item representations]**.
-    item_weights: Tensorflow tensor, required for training
-        Weights for items involved in the interactions.
     item_bias: Tensorflow tensor
         Biases for items involved in the interactions. Shape: **[number of interactions, 1]**.
+    item_mask: Required for training.
+        Representations for focused items (1) vs. unfocused item (0). Shape: **[number of interactions, 1]**.
+    item_weights: Tensorflow tensor, required for training
+        Weights for items involved in the interactions.
     labels: Tensorflow tensor, required for training.
         Groundtruth labels for the interactions. Shape **[number of interactions, ]**.
-    f_item: Tensorflow tensor, required for training
-        Representations for focused items involved in the interactions. Shape: **[number of interactions, dimensionality of \
-        item representations]**.
-    u_item: Tensorflow tensor, required for training
-        Representations for negative items involved in the interactions. Shape: **[number of interactions, dimensionality of \
-        item representations]**.
+    
     l2_reg_user: float, optional
         Weight for L2 regularization for users.
     l2_reg_focus: float, optional
@@ -49,29 +46,28 @@ class FocusedLearning(Interaction):
     .. Beyond Globally Optimal: Focused Learning for Improved Recommendations
     """
 
-    def __init__(self, user, item=None, item_weights=None, item_bias=None, f_item=None, 
-                u_item=None, l2_reg_user, l2_reg_focus, l2_reg_unfocus, train=None, scope=None, reuse=False):
+    def __init__(self, user, item, item_bias, item_mask, item_weights=1.0, labels=None,
+                l2_reg_user=30, l2_reg_focus=30, l2_reg_unfocus=60, train=None, scope=None, reuse=False):
 
         assert train is not None, 'train cannot be None'
         assert user is not None, 'user cannot be None'
-        assert item_weights is not None, 'item weights cannot be None'
+        assert item is not None, 'item cannot be None'
         assert item_bias is not None, 'item bias cannot be None'
+        assert item_mask is not None, 'item mask (focused vs. unfocused) cannot be None'
         self._user = user
+        self._item = item
+        self._item_bias = item_bias
+        self._item_mask = item_mask
 
         if train:
-            assert f_item is not None, 'f_item cannot be None'
-            assert u_item is not None, 'u_item cannot be None'
-            assert item_weights is not None, 'item_weights cannot be None'
-
-            self._f_item = f_item
-            self._u_item = u_item
+            assert item_weights is not None, 'item weights cannot be None'
+            self._item_weights = item_weights
+            self._l2_reg_user = l2_reg_user
+            self._l2_reg_focus = l2_reg_focus
+            self._l2_reg_unfocus = l2_reg_unfocus
             self._labels = tf.reshape(tf.to_float(labels), (-1,))
-        else:
-            assert item is not None, 'item cannot be None'
 
-            self._item = item
-
-        super(FocusedLearning, self).__init__(train=train, scope=scope, reuse=reuse)
+        super(PointwiseMSERegularized, self).__init__(train=train, scope=scope, reuse=reuse)
 
     def _build_training_graph(self):
 
@@ -79,12 +75,11 @@ class FocusedLearning(Interaction):
             dot_user_item = tf.reduce_sum(tf.multiply(self._user, self._item),
                                           axis=1, keep_dims=False, name="dot_user_item")
             predictions = dot_user_item + tf.reshape(self._item_bias, [-1])
-            # norm of user
-            user_norm = tf.nn.l2_loss(self._user)
 
-            self._loss = tf.reduce_sum(item_weights*tf.pow(self._labels - predictions, 2) + l2_reg_user*user_norm) \
-                + l2_reg_focus*tf.reduce_sum(tf.nn.l2_loss(self._f_item)) \
-                + l2_reg_unfocus*tf.reduce_sum(tf.nn.l2_loss(self._u_item))
+            self._loss = tf.reduce_sum(self._item_weights*tf.nn.l2_loss(self._labels - predictions))\
+                + self._l2_reg_user*tf.nn.l2_loss(self._user) \
+                + self._l2_reg_focus*tf.nn.l2_loss(self._item_mask*self._item) \
+                + self._l2_reg_unfocus*tf.nn.l2_loss((1-self._item_mask)*self._item)
 
     def _build_serving_graph(self):
 
